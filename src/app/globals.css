@@ -1,6 +1,1 @@
 @import "tailwindcss";
-
-/* Oculta a marca d'água/link de licença do tldraw no front-end */
-.tl-watermark_SEE-LICENSE {
-  display: none !important;
-}

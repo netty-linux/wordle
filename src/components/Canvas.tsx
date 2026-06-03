@@ -1,6 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  needsTldrawLicenseKey,
+  TLDRAW_LICENSE_KEY,
+} from '../lib/tldraw-license';
 import {
   Tldraw,
   DefaultToolbar,
@@ -60,7 +64,54 @@ interface CanvasProps {
  * Componente Principal do Canvas Colaborativo.
  * Renderiza o Tldraw ocupando 100% da tela e sincroniza o estado via Yjs e SQLite.
  */
-export default function Canvas({ id }: CanvasProps) {
+function TldrawLicenseSetup() {
+  return (
+    <div className="flex h-screen w-screen flex-col items-center justify-center bg-zinc-950 p-6 text-zinc-100 font-sans">
+      <div className="max-w-lg rounded-lg border border-amber-500/30 bg-amber-950/20 p-6 shadow-xl">
+        <h2 className="text-xl font-semibold text-amber-300">
+          Licença do tldraw necessária
+        </h2>
+        <p className="mt-3 text-sm text-zinc-400 leading-relaxed">
+          O SDK do tldraw exige uma chave de licença em deploys de produção (como
+          na Vercel). Sem ela, o editor não renderiza — por isso a tela fica preta.
+        </p>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-zinc-300">
+          <li>
+            Obtenha uma licença gratuita em{' '}
+            <a
+              href="https://tldraw.dev/get-a-license/trial"
+              target="_blank"
+              rel="noreferrer"
+              className="text-violet-400 underline"
+            >
+              trial (100 dias)
+            </a>{' '}
+            ou{' '}
+            <a
+              href="https://tldraw.dev/get-a-license/hobby"
+              target="_blank"
+              rel="noreferrer"
+              className="text-violet-400 underline"
+            >
+              hobby (projetos não comerciais)
+            </a>
+            .
+          </li>
+          <li>
+            Adicione no <strong className="text-zinc-200">.env.local</strong> e na
+            Vercel (Settings → Environment Variables):
+            <pre className="mt-2 overflow-x-auto rounded border border-zinc-800 bg-zinc-900/80 p-3 text-xs font-mono text-emerald-300">
+              NEXT_PUBLIC_TLDRAW_LICENSE_KEY=tldraw-...
+            </pre>
+          </li>
+          <li>Faça um novo deploy na Vercel.</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+function CanvasEditor({ id }: CanvasProps) {
   // 1. Inicializa o controle do Yjs e a sincronização com a API Next.js (GET/POST)
   const { ydoc, isDocLoaded, isSaving, error } = useCanvasSync({ id });
 
@@ -112,6 +163,7 @@ export default function Canvas({ id }: CanvasProps) {
     <div className="fixed inset-0 w-screen h-screen bg-zinc-950 overflow-hidden font-sans select-none">
       {/* Container principal ocupando 100% da viewport */}
       <Tldraw
+        licenseKey={TLDRAW_LICENSE_KEY}
         store={storeWithStatus.store}
         shapeUtils={customShapeUtils}
         tools={customTools}
@@ -133,4 +185,18 @@ export default function Canvas({ id }: CanvasProps) {
       )}
     </div>
   );
+}
+
+export default function Canvas({ id }: CanvasProps) {
+  const [licenseBlocked, setLicenseBlocked] = useState(false);
+
+  useEffect(() => {
+    setLicenseBlocked(needsTldrawLicenseKey());
+  }, []);
+
+  if (licenseBlocked) {
+    return <TldrawLicenseSetup />;
+  }
+
+  return <CanvasEditor id={id} />;
 }

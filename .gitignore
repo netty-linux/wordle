@@ -8,7 +8,6 @@ out/
 # env
 .env
 .env*.local
-.env.example
 
 # debug / OS
 npm-debug.log*
