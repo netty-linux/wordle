@@ -15,6 +15,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# database
+local.db
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
