@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 
 interface UseCanvasSyncProps {
@@ -6,6 +6,19 @@ interface UseCanvasSyncProps {
   debounceMs?: number;
   /** When false, POST sync is paused (e.g. while tldraw hydrates from Yjs). */
   isSyncReady?: boolean;
+}
+
+export type ManualSaveStatus =
+  | 'saved'
+  | 'already_synced'
+  | 'not_ready'
+  | 'session_expired'
+  | 'error';
+
+export interface ManualSaveResult {
+  ok: boolean;
+  status: ManualSaveStatus;
+  message?: string;
 }
 
 const MAX_POST_BYTES = 4_000_000;
@@ -54,6 +67,12 @@ export function useCanvasSync({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+
+  const saveNowHandlerRef = useRef<() => Promise<ManualSaveResult>>(async () => ({
+    ok: false,
+    status: 'not_ready',
+    message: 'Canvas ainda não está pronto.',
+  }));
 
   useEffect(() => {
     let active = true;
@@ -120,23 +139,36 @@ export function useCanvasSync({
     let timeoutId: NodeJS.Timeout;
     let dirty = false;
 
-    const flushToServer = async () => {
-      if (!dirty) return;
-      dirty = false;
+    const persistDiff = async (): Promise<ManualSaveResult> => {
+      if (sessionExpired) {
+        return {
+          ok: false,
+          status: 'session_expired',
+          message: SESSION_EXPIRED_MESSAGE,
+        };
+      }
 
       const fullState = Y.encodeStateAsUpdate(ydoc);
       const diffUpdate = Y.diffUpdate(fullState, lastSyncedVectorRef.current);
 
-      if (diffUpdate.byteLength === 0) return;
+      if (diffUpdate.byteLength === 0) {
+        return {
+          ok: true,
+          status: 'already_synced',
+          message: 'Tudo já está salvo na nuvem.',
+        };
+      }
+
+      if (diffUpdate.byteLength > MAX_POST_BYTES) {
+        return {
+          ok: false,
+          status: 'error',
+          message: `Alteração muito grande para enviar (${diffUpdate.byteLength} bytes). Recarregue e tente de novo.`,
+        };
+      }
 
       try {
         setIsSaving(true);
-
-        if (diffUpdate.byteLength > MAX_POST_BYTES) {
-          throw new Error(
-            `Alteração muito grande para enviar (${diffUpdate.byteLength} bytes). Tente novamente após recarregar.`
-          );
-        }
 
         const response = await canvasFetch(`/api/canvas/${id}`, {
           method: 'POST',
@@ -149,26 +181,37 @@ export function useCanvasSync({
 
         if (isAuthFailure(response)) {
           setSessionExpired(true);
-          return;
+          return {
+            ok: false,
+            status: 'session_expired',
+            message: SESSION_EXPIRED_MESSAGE,
+          };
         }
 
         if (response.status === 413) {
-          throw new Error(
-            'O canvas excedeu o limite de envio (413). Recarregue a página e tente de novo.'
-          );
+          return {
+            ok: false,
+            status: 'error',
+            message:
+              'O canvas excedeu o limite de envio (413). Recarregue a página e tente de novo.',
+          };
         }
 
         if (!response.ok) {
-          throw new Error(
-            `Falha ao sincronizar o estado com o servidor: ${response.status} ${response.statusText}`
-          );
+          return {
+            ok: false,
+            status: 'error',
+            message: `Falha ao sincronizar: ${response.status} ${response.statusText}`,
+          };
         }
 
         const result = await response.json().catch(() => ({}));
         if (result.persisted === false) {
-          throw new Error(
-            'Servidor não persistiu o canvas. Verifique Turso/Blob na Vercel.'
-          );
+          return {
+            ok: false,
+            status: 'error',
+            message: 'Servidor não persistiu o canvas. Verifique Turso/Blob na Vercel.',
+          };
         }
 
         lastSyncedVectorRef.current = Y.encodeStateVector(ydoc);
@@ -176,12 +219,35 @@ export function useCanvasSync({
         console.log(
           `[useCanvasSync] Canvas '${id}' salvo (+${diffUpdate.byteLength} bytes → merge ${result.mergedBytes ?? '?'} no servidor).`
         );
+
+        return {
+          ok: true,
+          status: 'saved',
+          message: 'Canvas salvo na nuvem.',
+        };
       } catch (err: unknown) {
-        console.error('[useCanvasSync] Erro no Lazy Sync:', err);
-        setError(err instanceof Error ? err : new Error(String(err)));
+        const message =
+          err instanceof Error ? err.message : 'Erro desconhecido ao salvar.';
+        console.error('[useCanvasSync] Erro ao salvar:', err);
+        setError(err instanceof Error ? err : new Error(message));
+        return { ok: false, status: 'error', message };
       } finally {
         setIsSaving(false);
       }
+    };
+
+    const flushToServer = async () => {
+      if (!dirty) return;
+      dirty = false;
+      await persistDiff();
+    };
+
+    saveNowHandlerRef.current = async () => {
+      clearTimeout(timeoutId);
+      dirty = true;
+      const result = await persistDiff();
+      dirty = false;
+      return result;
     };
 
     const handleUpdate = (_update: Uint8Array, origin: unknown) => {
@@ -198,8 +264,18 @@ export function useCanvasSync({
     return () => {
       ydoc.off('update', handleUpdate);
       clearTimeout(timeoutId);
+      saveNowHandlerRef.current = async () => ({
+        ok: false,
+        status: 'not_ready',
+        message: 'Canvas ainda não está pronto.',
+      });
     };
-  }, [ydoc, id, isDocLoaded, isSyncReady, debounceMs]);
+  }, [ydoc, id, isDocLoaded, isSyncReady, debounceMs, sessionExpired]);
+
+  const saveNow = useCallback(
+    () => saveNowHandlerRef.current(),
+    []
+  );
 
   return {
     ydoc,
@@ -207,5 +283,6 @@ export function useCanvasSync({
     isSaving,
     error,
     sessionExpired,
+    saveNow,
   };
 }

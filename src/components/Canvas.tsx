@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   needsTldrawLicenseKey,
   TLDRAW_LICENSE_KEY,
@@ -25,6 +25,9 @@ import {
   canvasTipTapExtensions,
 } from '../canvas/text/richTextConfig';
 import { RichTextStyleHandler } from '../canvas/text/RichTextStyleHandler';
+import { CanvasMainMenu } from '../canvas/ui/CanvasMainMenu';
+import { toastForManualSave } from '../canvas/ui/canvasSaveUi';
+import type { ManualSaveResult } from '../hooks/useCanvasSync';
 
 import 'tldraw/tldraw.css';
 
@@ -32,22 +35,8 @@ import 'tldraw/tldraw.css';
 const customShapeUtils = [TaskCardShapeUtil];
 const customTools = [TaskCardTool];
 
-const uiOverrides: TLUiOverrides = {
-  tools(editor, tools) {
-    tools['task-card'] = {
-      id: 'task-card',
-      icon: 'note', // Ícone padrão de nota adesiva
-      label: 'Task Card',
-      kbd: 'c',
-      onSelect() {
-        editor.setCurrentTool('task-card');
-      },
-    };
-    return tools;
-  },
-};
-
 const components: TLComponents = {
+  MainMenu: CanvasMainMenu,
   Toolbar: (props) => {
     const tools = useTools();
     const isSelected = useIsToolSelected(tools['task-card']);
@@ -126,12 +115,56 @@ const canvasTextOptions = {
 function CanvasEditor({ id }: CanvasProps) {
   const [isTldrawHydrated, setIsTldrawHydrated] = useState(false);
   const textOptions = useMemo(() => canvasTextOptions, []);
+  const saveNowRef = useRef<() => Promise<ManualSaveResult>>(async () => ({
+    ok: false,
+    status: 'not_ready',
+    message: 'Canvas ainda não está pronto.',
+  }));
 
   // 1. Yjs + API sync (POST pauses until tldraw finishes hydrating from Y.Doc)
-  const { ydoc, isDocLoaded, isSaving, error, sessionExpired } = useCanvasSync({
-    id,
-    isSyncReady: isTldrawHydrated,
-  });
+  const { ydoc, isDocLoaded, isSaving, error, sessionExpired, saveNow } =
+    useCanvasSync({
+      id,
+      isSyncReady: isTldrawHydrated,
+    });
+
+  saveNowRef.current = saveNow;
+
+  const uiOverrides = useMemo<TLUiOverrides>(
+    () => ({
+      tools(editor, tools) {
+        tools['task-card'] = {
+          id: 'task-card',
+          icon: 'note',
+          label: 'Task Card',
+          kbd: 'c',
+          onSelect() {
+            editor.setCurrentTool('task-card');
+          },
+        };
+        return tools;
+      },
+      actions(editor, actions, helpers) {
+        actions['save-canvas'] = {
+          id: 'save-canvas',
+          label: 'action.save-canvas',
+          icon: 'check-circle',
+          kbd: 'cmd+s,ctrl+s',
+          async onSelect() {
+            const result = await saveNowRef.current();
+            toastForManualSave(result, helpers);
+          },
+        };
+        return actions;
+      },
+      translations: {
+        en: { 'action.save-canvas': 'Save canvas' },
+        pt_br: { 'action.save-canvas': 'Salvar canvas' },
+        'pt-BR': { 'action.save-canvas': 'Salvar canvas' },
+      },
+    }),
+    []
+  );
 
   // 2. Tldraw store ↔ Y.Doc
   const storeWithStatus = useYjsStore({ ydoc, isDocLoaded });
@@ -209,7 +242,7 @@ function CanvasEditor({ id }: CanvasProps) {
         <RichTextStyleHandler />
       </Tldraw>
 
-      {/* Indicador sutil de salvamento em background (Lazy Sync) */}
+      {/* Indicador de salvamento (automático ou Ctrl+S) */}
       {isSaving && (
         <div className="absolute bottom-4 right-4 z-[9999] flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/90 px-3 py-1.5 shadow-lg backdrop-blur-md">
           <span className="relative flex h-2 w-2">
