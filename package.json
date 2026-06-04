@@ -23,7 +23,8 @@
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "e2e:canvas": "node scripts/e2e-canvas-api.mjs"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
