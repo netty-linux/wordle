@@ -115,7 +115,7 @@ function CanvasEditor({ id }: CanvasProps) {
   const [isTldrawHydrated, setIsTldrawHydrated] = useState(false);
 
   // 1. Yjs + API sync (POST pauses until tldraw finishes hydrating from Y.Doc)
-  const { ydoc, isDocLoaded, isSaving, error } = useCanvasSync({
+  const { ydoc, isDocLoaded, isSaving, error, sessionExpired } = useCanvasSync({
     id,
     isSyncReady: isTldrawHydrated,
   });
@@ -170,7 +170,20 @@ function CanvasEditor({ id }: CanvasProps) {
 
   return (
     <div className="fixed inset-0 w-screen h-screen bg-zinc-950 overflow-hidden font-sans select-none">
-      {/* Container principal ocupando 100% da viewport */}
+      {sessionExpired && (
+        <div className="absolute top-4 left-1/2 z-[10000] w-[min(100%,28rem)] -translate-x-1/2 rounded-lg border border-amber-500/40 bg-amber-950/90 px-4 py-3 shadow-lg backdrop-blur-md">
+          <p className="text-sm text-amber-100">
+            Sessão expirada — seu desenho continua neste dispositivo, mas não está
+            sendo salvo na nuvem.
+          </p>
+          <a
+            href="/login?callbackUrl=/"
+            className="mt-2 inline-block text-sm font-semibold text-amber-300 underline"
+          >
+            Fazer login novamente
+          </a>
+        </div>
+      )}
       <Tldraw
         licenseKey={TLDRAW_LICENSE_KEY}
         store={storeWithStatus.store}

@@ -18,7 +18,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     sessionsTable: sessions,
     verificationTokensTable: verificationTokens,
   }),
-  session: { strategy: 'jwt' },
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
+  },
   pages: { signIn: '/login' },
   trustHost: true,
   providers: [
@@ -76,7 +80,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return true;
       }
 
-      if (path === '/' || path.startsWith('/api/canvas')) {
+      if (path.startsWith('/api/canvas')) {
+        if (!loggedIn) {
+          return new Response('Unauthorized', { status: 401 });
+        }
+        return true;
+      }
+
+      if (path === '/') {
         return loggedIn;
       }
 

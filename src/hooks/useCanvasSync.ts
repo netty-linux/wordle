@@ -10,6 +10,30 @@ interface UseCanvasSyncProps {
 
 const MAX_POST_BYTES = 4_000_000;
 
+const SESSION_EXPIRED_MESSAGE =
+  'Sessão expirada. Faça login novamente para continuar salvando.';
+
+function isAuthFailure(response: Response): boolean {
+  if (response.type === 'opaqueredirect') return true;
+  if (response.status === 401 || response.status === 405) return true;
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get('location') ?? '';
+    return location.includes('/login');
+  }
+  return response.url.includes('/login');
+}
+
+async function canvasFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    credentials: 'include',
+    redirect: 'manual',
+  });
+}
+
 /**
  * Hook customizado para gerenciar um Y.Doc local e sincronizá-lo com o backend.
  * Envia apenas o diff Yjs desde o último save (evita POST > 4.5MB / HTTP 413 na Vercel).
@@ -29,6 +53,7 @@ export function useCanvasSync({
   const [isDocLoaded, setIsDocLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -37,11 +62,14 @@ export function useCanvasSync({
       try {
         setIsDocLoaded(false);
         setError(null);
+        setSessionExpired(false);
         lastSyncedVectorRef.current = new Uint8Array();
 
-        const response = await fetch(`/api/canvas/${id}`, {
-          credentials: 'include',
-        });
+        const response = await canvasFetch(`/api/canvas/${id}`);
+
+        if (isAuthFailure(response)) {
+          throw new Error(SESSION_EXPIRED_MESSAGE);
+        }
 
         if (response.status === 404) {
           console.log(
@@ -52,10 +80,6 @@ export function useCanvasSync({
             setIsDocLoaded(true);
           }
           return;
-        }
-
-        if (response.status === 401) {
-          throw new Error('Sessão expirada. Faça login novamente em /login');
         }
 
         if (!response.ok) {
@@ -114,15 +138,19 @@ export function useCanvasSync({
           );
         }
 
-        const response = await fetch(`/api/canvas/${id}`, {
+        const response = await canvasFetch(`/api/canvas/${id}`, {
           method: 'POST',
-          credentials: 'include',
           headers: {
             'Content-Type': 'application/octet-stream',
             'X-Canvas-Update': 'incremental',
           },
           body: diffUpdate as BodyInit,
         });
+
+        if (isAuthFailure(response)) {
+          setSessionExpired(true);
+          return;
+        }
 
         if (response.status === 413) {
           throw new Error(
@@ -178,5 +206,6 @@ export function useCanvasSync({
     isDocLoaded,
     isSaving,
     error,
+    sessionExpired,
   };
 }
