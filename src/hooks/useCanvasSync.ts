@@ -112,6 +112,11 @@ export function useCanvasSync({ id, debounceMs = 2000 }: UseCanvasSyncProps) {
         try {
           setIsSaving(true);
 
+          const fullDocBytes = Y.encodeStateAsUpdate(ydoc).byteLength;
+          console.log(
+            `[useCanvasSync:debug-d65edf] POST incremental`,
+            { postBytes: incrementalUpdate.byteLength, batchCount: batch.length, fullDocBytes }
+          );
           // #region agent log
           fetch('http://127.0.0.1:7401/ingest/bc08e07d-0b22-492d-a8b7-6f08426e0ffc', {
             method: 'POST',
@@ -121,6 +126,7 @@ export function useCanvasSync({ id, debounceMs = 2000 }: UseCanvasSyncProps) {
             },
             body: JSON.stringify({
               sessionId: 'd65edf',
+              runId: 'post-fix',
               hypothesisId: 'A',
               location: 'useCanvasSync.ts:prePOST',
               message: 'POST incremental payload',
@@ -128,7 +134,7 @@ export function useCanvasSync({ id, debounceMs = 2000 }: UseCanvasSyncProps) {
                 canvasId: id,
                 postBytes: incrementalUpdate.byteLength,
                 batchCount: batch.length,
-                fullDocBytes: Y.encodeStateAsUpdate(ydoc).byteLength,
+                fullDocBytes,
               },
               timestamp: Date.now(),
             }),
@@ -145,6 +151,10 @@ export function useCanvasSync({ id, debounceMs = 2000 }: UseCanvasSyncProps) {
             body: incrementalUpdate as BodyInit,
           });
 
+          console.log(`[useCanvasSync:debug-d65edf] POST response`, {
+            status: response.status,
+            ok: response.ok,
+          });
           // #region agent log
           fetch('http://127.0.0.1:7401/ingest/bc08e07d-0b22-492d-a8b7-6f08426e0ffc', {
             method: 'POST',
@@ -154,6 +164,7 @@ export function useCanvasSync({ id, debounceMs = 2000 }: UseCanvasSyncProps) {
             },
             body: JSON.stringify({
               sessionId: 'd65edf',
+              runId: 'post-fix',
               hypothesisId: 'A',
               location: 'useCanvasSync.ts:postPOST',
               message: 'POST response',
