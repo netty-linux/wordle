@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   needsTldrawLicenseKey,
   TLDRAW_LICENSE_KEY,
@@ -20,6 +20,8 @@ import { useYjsStore } from '../hooks/useYjsStore';
 import { TaskCardShapeUtil } from '../canvas/shapes/TaskCardShape';
 import { TaskCardTool } from '../canvas/tools/TaskCardTool';
 import { AcademicSidebar } from '../canvas/ui/AcademicSidebar';
+import { canvasTipTapExtensions } from '../canvas/text/richTextConfig';
+import { RichTextColorHandler } from '../canvas/text/RichTextColorHandler';
 
 import 'tldraw/tldraw.css';
 
@@ -111,8 +113,15 @@ function TldrawLicenseSetup() {
   );
 }
 
+const canvasTextOptions = {
+  tipTapConfig: {
+    extensions: canvasTipTapExtensions,
+  },
+};
+
 function CanvasEditor({ id }: CanvasProps) {
   const [isTldrawHydrated, setIsTldrawHydrated] = useState(false);
+  const textOptions = useMemo(() => canvasTextOptions, []);
 
   // 1. Yjs + API sync (POST pauses until tldraw finishes hydrating from Y.Doc)
   const { ydoc, isDocLoaded, isSaving, error, sessionExpired } = useCanvasSync({
@@ -191,7 +200,10 @@ function CanvasEditor({ id }: CanvasProps) {
         tools={customTools}
         overrides={uiOverrides}
         components={components}
-      />
+        textOptions={textOptions}
+      >
+        <RichTextColorHandler />
+      </Tldraw>
 
       {/* Indicador sutil de salvamento em background (Lazy Sync) */}
       {isSaving && (
