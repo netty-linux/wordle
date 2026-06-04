@@ -1,0 +1,4 @@
+{"sessionId":"d65edf","runId":"post-fix","hypothesisId":"A","location":"useCanvasSync.ts:prePOST","message":"POST incremental payload","data":{"canvasId":"default-canvas-room","postBytes":2326,"batchCount":1,"fullDocBytes":6364925},"timestamp":1780591511654}
+{"sessionId":"d65edf","runId":"post-fix","hypothesisId":"A","location":"useCanvasSync.ts:postPOST","message":"POST response","data":{"canvasId":"default-canvas-room","status":200,"ok":true},"timestamp":1780591517556}
+{"sessionId":"d65edf","runId":"post-fix","hypothesisId":"A","location":"useCanvasSync.ts:prePOST","message":"POST incremental payload","data":{"canvasId":"default-canvas-room","postBytes":15892,"batchCount":83,"fullDocBytes":6364936},"timestamp":1780591826461}
+{"sessionId":"d65edf","runId":"post-fix","hypothesisId":"A","location":"useCanvasSync.ts:postPOST","message":"POST response","data":{"canvasId":"default-canvas-room","status":405,"ok":false},"timestamp":1780591826695}
