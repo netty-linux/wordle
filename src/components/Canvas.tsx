@@ -20,8 +20,11 @@ import { useYjsStore } from '../hooks/useYjsStore';
 import { TaskCardShapeUtil } from '../canvas/shapes/TaskCardShape';
 import { TaskCardTool } from '../canvas/tools/TaskCardTool';
 import { AcademicSidebar } from '../canvas/ui/AcademicSidebar';
-import { canvasTipTapExtensions } from '../canvas/text/richTextConfig';
-import { RichTextColorHandler } from '../canvas/text/RichTextColorHandler';
+import {
+  canvasAddFontsFromNode,
+  canvasTipTapExtensions,
+} from '../canvas/text/richTextConfig';
+import { RichTextStyleHandler } from '../canvas/text/RichTextStyleHandler';
 
 import 'tldraw/tldraw.css';
 
@@ -114,6 +117,7 @@ function TldrawLicenseSetup() {
 }
 
 const canvasTextOptions = {
+  addFontsFromNode: canvasAddFontsFromNode,
   tipTapConfig: {
     extensions: canvasTipTapExtensions,
   },
@@ -202,7 +206,7 @@ function CanvasEditor({ id }: CanvasProps) {
         components={components}
         textOptions={textOptions}
       >
-        <RichTextColorHandler />
+        <RichTextStyleHandler />
       </Tldraw>
 
       {/* Indicador sutil de salvamento em background (Lazy Sync) */}
