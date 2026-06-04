@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import {
-  blob,
   integer,
   primaryKey,
   sqliteTable,
@@ -63,6 +62,10 @@ export const verificationTokens = sqliteTable(
   })
 );
 
+/**
+ * Metadados do workspace/canvas por usuário (multi-tenant).
+ * O estado Yjs binário vive exclusivamente no Vercel Blob: canvas/{userId}/{id}.yjs
+ */
 export const canvasDocuments = sqliteTable(
   'canvas_documents',
   {
@@ -70,7 +73,8 @@ export const canvasDocuments = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    yjsState: blob('yjs_state', { mode: 'buffer' }),
+    blobUrl: text('blob_url'),
+    sizeBytes: integer('size_bytes'),
     createdAt: integer('created_at', { mode: 'timestamp' }).default(
       sql`(strftime('%s', 'now'))`
     ),
@@ -82,3 +86,6 @@ export const canvasDocuments = sqliteTable(
     pk: primaryKey({ columns: [table.id, table.userId] }),
   })
 );
+
+export type CanvasDocument = typeof canvasDocuments.$inferSelect;
+export type NewCanvasDocument = typeof canvasDocuments.$inferInsert;

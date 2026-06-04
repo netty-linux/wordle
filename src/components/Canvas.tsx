@@ -124,7 +124,7 @@ function CanvasEditor({ id }: CanvasProps) {
   // 1. Yjs + API sync (POST pauses until tldraw finishes hydrating from Y.Doc)
   const { ydoc, isDocLoaded, isSaving, error, sessionExpired, saveNow } =
     useCanvasSync({
-      id,
+      workspaceId: id,
       isSyncReady: isTldrawHydrated,
     });
 

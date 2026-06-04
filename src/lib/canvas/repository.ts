@@ -1,106 +1,105 @@
-import { and, eq } from 'drizzle-orm';
 import * as Y from 'yjs';
 import { db, canvasDocuments } from '../db';
-import { getCanvasBlob, isBlobStorageConfigured, putCanvasBlob } from './blob';
+import {
+  CanvasBlobError,
+  assertBlobStorageConfigured,
+  getCanvasBlob,
+  putCanvasBlob,
+} from './blob';
 
-async function getCanvasRow(userId: string, canvasId: string) {
-  const rows = await db
-    .select()
-    .from(canvasDocuments)
-    .where(
-      and(eq(canvasDocuments.id, canvasId), eq(canvasDocuments.userId, userId))
-    )
-    .limit(1);
+export type CanvasStorageBackend = 'blob';
 
-  return rows[0] ?? null;
+export interface CanvasPersistResult {
+  persisted: boolean;
+  storage: CanvasStorageBackend;
+  blobUrl: string;
+  incomingBytes: number;
+  mergedBytes: number;
 }
 
-async function persistMergedState(
+async function upsertCanvasMetadata(
   userId: string,
   canvasId: string,
-  merged: Buffer
-): Promise<{ persisted: boolean; storage: 'turso' | 'blob' | 'turso+blob' }> {
+  blobUrl: string,
+  sizeBytes: number
+) {
+  const now = new Date();
+
   await db
     .insert(canvasDocuments)
     .values({
       id: canvasId,
       userId,
-      yjsState: merged,
-      updatedAt: new Date(),
+      blobUrl,
+      sizeBytes,
+      createdAt: now,
+      updatedAt: now,
     })
     .onConflictDoUpdate({
       target: [canvasDocuments.id, canvasDocuments.userId],
       set: {
-        yjsState: merged,
-        updatedAt: new Date(),
+        blobUrl,
+        sizeBytes,
+        updatedAt: now,
       },
     });
-
-  if (isBlobStorageConfigured()) {
-    try {
-      await putCanvasBlob(userId, canvasId, merged);
-      return { persisted: true, storage: 'turso+blob' };
-    } catch (error) {
-      console.error('[canvas] Falha ao espelhar no Blob (Turso OK):', error);
-      return { persisted: true, storage: 'turso' };
-    }
-  }
-
-  return { persisted: true, storage: 'turso' };
 }
 
+async function loadDocFromBlob(
+  userId: string,
+  canvasId: string
+): Promise<Y.Doc> {
+  const doc = new Y.Doc();
+  const existing = await getCanvasBlob(userId, canvasId);
+
+  if (existing && existing.length > 0) {
+    Y.applyUpdate(doc, new Uint8Array(existing));
+  }
+
+  return doc;
+}
+
+/**
+ * Lê o estado Yjs do Vercel Blob para o par (userId, canvasId).
+ * Retorna null se o blob não existir (primeiro acesso).
+ */
 export async function getCanvasState(
   userId: string,
   canvasId: string
 ): Promise<Buffer | null> {
-  const row = await getCanvasRow(userId, canvasId);
-  if (!row) return null;
-
-  if (row.yjsState && row.yjsState.length > 0) {
-    return row.yjsState;
-  }
-
-  if (!isBlobStorageConfigured()) {
-    return null;
-  }
-
+  assertBlobStorageConfigured();
   return getCanvasBlob(userId, canvasId);
 }
 
-/** Aplica update incremental Yjs sobre o estado salvo e persiste o merge no Turso. */
+/**
+ * Mescla update incremental Yjs, persiste no Blob e faz upsert de metadados no Turso.
+ */
 export async function applyCanvasUpdate(
   userId: string,
   canvasId: string,
   incoming: Buffer
-): Promise<{
-  persisted: boolean;
-  storage: 'turso' | 'blob' | 'turso+blob';
-  incomingBytes: number;
-  mergedBytes: number;
-}> {
-  const row = await getCanvasRow(userId, canvasId);
-  const doc = new Y.Doc();
+): Promise<CanvasPersistResult> {
+  assertBlobStorageConfigured();
 
-  if (row?.yjsState && row.yjsState.length > 0) {
-    Y.applyUpdate(doc, new Uint8Array(row.yjsState));
-  }
-
+  const doc = await loadDocFromBlob(userId, canvasId);
   Y.applyUpdate(doc, new Uint8Array(incoming));
+
   const merged = Buffer.from(Y.encodeStateAsUpdate(doc));
-  const storage = await persistMergedState(userId, canvasId, merged);
+  const blob = await putCanvasBlob(userId, canvasId, merged);
+
+  await upsertCanvasMetadata(userId, canvasId, blob.url, blob.sizeBytes);
 
   return {
-    ...storage,
+    persisted: true,
+    storage: 'blob',
+    blobUrl: blob.url,
     incomingBytes: incoming.length,
     mergedBytes: merged.length,
   };
 }
 
-/** Substitui o estado inteiro (legado). */
-export async function saveCanvasState(
-  userId: string,
-  canvasId: string,
-  data: Buffer
-): Promise<{ persisted: boolean; storage: 'turso' | 'blob' | 'turso+blob' }> {
-  return persistMergedState(userId, canvasId, data);
+export function isCanvasStorageError(
+  error: unknown
+): error is CanvasBlobError {
+  return error instanceof CanvasBlobError;
 }
