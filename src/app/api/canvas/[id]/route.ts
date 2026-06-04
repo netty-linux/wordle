@@ -74,29 +74,9 @@ export async function POST(
       );
     }
 
-    const mode = request.headers.get('x-canvas-update') ?? 'incremental';
-
-    // #region agent log
-    fetch('http://127.0.0.1:7401/ingest/bc08e07d-0b22-492d-a8b7-6f08426e0ffc', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': 'd65edf',
-      },
-      body: JSON.stringify({
-        sessionId: 'd65edf',
-        hypothesisId: 'A',
-        location: 'route.ts:POST',
-        message: 'canvas POST received',
-        data: { canvasId: id, incomingBytes: buffer.length, mode },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     const result = await applyCanvasUpdate(session.user.id, id, buffer);
 
-    return NextResponse.json({ success: true, ...result, mode });
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error('Erro ao salvar o canvas:', error);
     return new NextResponse('Erro interno do servidor', { status: 500 });

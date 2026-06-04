@@ -64,24 +64,6 @@ export function useCanvasSync({
 
         const arrayBuffer = await response.arrayBuffer();
 
-        // #region agent log
-        fetch('http://127.0.0.1:7401/ingest/bc08e07d-0b22-492d-a8b7-6f08426e0ffc', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-Session-Id': 'd65edf',
-          },
-          body: JSON.stringify({
-            sessionId: 'd65edf',
-            hypothesisId: 'A',
-            location: 'useCanvasSync.ts:load',
-            message: 'GET canvas loaded',
-            data: { canvasId: id, getBytes: arrayBuffer.byteLength },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion
-
         if (arrayBuffer.byteLength > 0 && active) {
           const update = new Uint8Array(arrayBuffer);
           Y.applyUpdate(ydoc, update, 'initial-load');
@@ -120,39 +102,11 @@ export function useCanvasSync({
 
       const fullState = Y.encodeStateAsUpdate(ydoc);
       const diffUpdate = Y.diffUpdate(fullState, lastSyncedVectorRef.current);
-      const fullDocBytes = fullState.byteLength;
 
       if (diffUpdate.byteLength === 0) return;
 
       try {
         setIsSaving(true);
-
-        console.log(`[useCanvasSync:debug-d65edf] POST diff`, {
-          postBytes: diffUpdate.byteLength,
-          fullDocBytes,
-        });
-        // #region agent log
-        fetch('http://127.0.0.1:7401/ingest/bc08e07d-0b22-492d-a8b7-6f08426e0ffc', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-Session-Id': 'd65edf',
-          },
-          body: JSON.stringify({
-            sessionId: 'd65edf',
-            runId: 'post-fix-v2',
-            hypothesisId: 'N',
-            location: 'useCanvasSync.ts:prePOST',
-            message: 'POST diff payload',
-            data: {
-              canvasId: id,
-              postBytes: diffUpdate.byteLength,
-              fullDocBytes,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion
 
         if (diffUpdate.byteLength > MAX_POST_BYTES) {
           throw new Error(
@@ -169,33 +123,6 @@ export function useCanvasSync({
           },
           body: diffUpdate as BodyInit,
         });
-
-        console.log(`[useCanvasSync:debug-d65edf] POST response`, {
-          status: response.status,
-          ok: response.ok,
-        });
-        // #region agent log
-        fetch('http://127.0.0.1:7401/ingest/bc08e07d-0b22-492d-a8b7-6f08426e0ffc', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-Session-Id': 'd65edf',
-          },
-          body: JSON.stringify({
-            sessionId: 'd65edf',
-            runId: 'post-fix-v2',
-            hypothesisId: 'N',
-            location: 'useCanvasSync.ts:postPOST',
-            message: 'POST response',
-            data: {
-              canvasId: id,
-              status: response.status,
-              ok: response.ok,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion
 
         if (response.status === 413) {
           throw new Error(
