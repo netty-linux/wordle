@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  blob,
   integer,
   primaryKey,
   sqliteTable,
@@ -69,6 +70,7 @@ export const canvasDocuments = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    yjsState: blob('yjs_state', { mode: 'buffer' }),
     createdAt: integer('created_at', { mode: 'timestamp' }).default(
       sql`(strftime('%s', 'now'))`
     ),

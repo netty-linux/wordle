@@ -66,9 +66,9 @@ export async function POST(
       return new NextResponse('Buffer vazio enviado', { status: 400 });
     }
 
-    const { persisted } = await saveCanvasState(session.user.id, id, buffer);
+    const result = await saveCanvasState(session.user.id, id, buffer);
 
-    return NextResponse.json({ success: true, persisted });
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error('Erro ao salvar o canvas:', error);
     return new NextResponse('Erro interno do servidor', { status: 500 });

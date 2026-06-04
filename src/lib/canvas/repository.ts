@@ -2,47 +2,31 @@ import { and, eq } from 'drizzle-orm';
 import { db, canvasDocuments } from '../db';
 import { getCanvasBlob, isBlobStorageConfigured, putCanvasBlob } from './blob';
 
-export async function userOwnsCanvas(
-  userId: string,
-  canvasId: string
-): Promise<boolean> {
+async function getCanvasRow(userId: string, canvasId: string) {
   const rows = await db
-    .select({ id: canvasDocuments.id })
+    .select()
     .from(canvasDocuments)
     .where(
       and(eq(canvasDocuments.id, canvasId), eq(canvasDocuments.userId, userId))
     )
     .limit(1);
 
-  return rows.length > 0;
-}
-
-export async function touchCanvasDocument(
-  userId: string,
-  canvasId: string
-): Promise<void> {
-  await db
-    .insert(canvasDocuments)
-    .values({
-      id: canvasId,
-      userId,
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [canvasDocuments.id, canvasDocuments.userId],
-      set: { updatedAt: new Date() },
-    });
+  return rows[0] ?? null;
 }
 
 export async function getCanvasState(
   userId: string,
   canvasId: string
 ): Promise<Buffer | null> {
-  const owned = await userOwnsCanvas(userId, canvasId);
-  if (!owned) return null;
+  const row = await getCanvasRow(userId, canvasId);
+  if (!row) return null;
+
+  // Turso é a fonte principal (funciona sem Vercel Blob)
+  if (row.yjsState && row.yjsState.length > 0) {
+    return row.yjsState;
+  }
 
   if (!isBlobStorageConfigured()) {
-    console.warn('[canvas] BLOB_READ_WRITE_TOKEN ausente — retornando vazio.');
     return null;
   }
 
@@ -53,13 +37,32 @@ export async function saveCanvasState(
   userId: string,
   canvasId: string,
   data: Buffer
-): Promise<{ persisted: boolean }> {
-  if (!isBlobStorageConfigured()) {
-    await touchCanvasDocument(userId, canvasId);
-    return { persisted: false };
+): Promise<{ persisted: boolean; storage: 'turso' | 'blob' | 'turso+blob' }> {
+  await db
+    .insert(canvasDocuments)
+    .values({
+      id: canvasId,
+      userId,
+      yjsState: data,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [canvasDocuments.id, canvasDocuments.userId],
+      set: {
+        yjsState: data,
+        updatedAt: new Date(),
+      },
+    });
+
+  if (isBlobStorageConfigured()) {
+    try {
+      await putCanvasBlob(userId, canvasId, data);
+      return { persisted: true, storage: 'turso+blob' };
+    } catch (error) {
+      console.error('[canvas] Falha ao espelhar no Blob (Turso OK):', error);
+      return { persisted: true, storage: 'turso' };
+    }
   }
 
-  await putCanvasBlob(userId, canvasId, data);
-  await touchCanvasDocument(userId, canvasId);
-  return { persisted: true };
+  return { persisted: true, storage: 'turso' };
 }

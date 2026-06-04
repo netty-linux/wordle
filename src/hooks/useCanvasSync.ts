@@ -105,8 +105,15 @@ export function useCanvasSync({ id, debounceMs = 2000 }: UseCanvasSyncProps) {
             throw new Error(`Falha ao sincronizar o estado com o servidor: ${response.statusText}`);
           }
 
+          const result = await response.json().catch(() => ({}));
+          if (result.persisted === false) {
+            throw new Error('Servidor não persistiu o canvas. Verifique Turso/Blob na Vercel.');
+          }
+
           setError(null);
-          console.log(`[useCanvasSync] Canvas '${id}' sincronizado com sucesso no backend.`);
+          console.log(
+            `[useCanvasSync] Canvas '${id}' salvo (${result.storage ?? 'ok'}, ${documentUpdate.byteLength} bytes).`
+          );
         } catch (err: any) {
           console.error('[useCanvasSync] Erro no Lazy Sync:', err);
           setError(err);
