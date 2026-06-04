@@ -28,6 +28,7 @@ import { RichTextStyleHandler } from '../canvas/text/RichTextStyleHandler';
 import { CanvasMainMenu } from '../canvas/ui/CanvasMainMenu';
 import { toastForManualSave } from '../canvas/ui/canvasSaveUi';
 import type { ManualSaveResult } from '../hooks/useCanvasSync';
+import { canvasDebug } from '@/lib/canvas/debug';
 
 import 'tldraw/tldraw.css';
 
@@ -170,8 +171,16 @@ function CanvasEditor({ id }: CanvasProps) {
   const storeWithStatus = useYjsStore({ ydoc, isDocLoaded });
 
   useEffect(() => {
-    setIsTldrawHydrated(storeWithStatus.status === 'synced-remote');
-  }, [storeWithStatus.status]);
+    const hydrated = storeWithStatus.status === 'synced-remote';
+    setIsTldrawHydrated(hydrated);
+    if (hydrated) {
+      canvasDebug('isTldrawHydrated true', {
+        workspaceId: id,
+        isDocLoaded,
+        storeStatus: storeWithStatus.status,
+      });
+    }
+  }, [storeWithStatus.status, id, isDocLoaded]);
 
   // Tela de Erro com painel técnico formatado em 'Departure Mono'
   if (error) {

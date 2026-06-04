@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
+import { canvasDebug } from '@/lib/canvas/debug';
 
 interface UseCanvasSyncProps {
   /** ID do workspace/canvas (ex.: default-canvas-room). */
@@ -46,6 +47,15 @@ function yjsUpdateToPostBody(update: Uint8Array): Blob {
   return new Blob([Uint8Array.from(update)]);
 }
 
+async function readResponseBody(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    return text.slice(0, 500);
+  } catch {
+    return '(corpo ilegível)';
+  }
+}
+
 async function canvasFetch(
   workspaceId: string,
   init?: RequestInit
@@ -76,11 +86,16 @@ export function useCanvasSync({
   const sessionExpiredRef = useRef(false);
   const flushInFlightRef = useRef(false);
   const pendingFlushRef = useRef(false);
+  const isSyncReadyRef = useRef(isSyncReady);
+  const isDocLoadedRef = useRef(false);
 
   const [isDocLoaded, setIsDocLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+
+  isSyncReadyRef.current = isSyncReady;
+  isDocLoadedRef.current = isDocLoaded;
 
   const saveNowHandlerRef = useRef<() => Promise<ManualSaveResult>>(async () => ({
     ok: false,
@@ -94,10 +109,13 @@ export function useCanvasSync({
     async function loadCanvas() {
       try {
         setIsDocLoaded(false);
+        isDocLoadedRef.current = false;
         setError(null);
         setSessionExpired(false);
         sessionExpiredRef.current = false;
         lastSyncedVectorRef.current = new Uint8Array();
+
+        canvasDebug('GET start', { workspaceId });
 
         const response = await canvasFetch(workspaceId);
 
@@ -106,24 +124,50 @@ export function useCanvasSync({
         }
 
         if (response.status === 404) {
+          canvasDebug('GET empty', {
+            workspaceId,
+            status: 404,
+            note: 'primeiro acesso — Y.Doc vazio',
+          });
           console.log(
             `[useCanvasSync] Workspace '${workspaceId}' sem blob — Y.Doc vazio.`
           );
           if (active) {
             lastSyncedVectorRef.current = Y.encodeStateVector(ydoc);
             setIsDocLoaded(true);
+            isDocLoadedRef.current = true;
           }
           return;
         }
 
         if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          const detail =
-            typeof body.error === 'string' ? body.error : response.statusText;
+          const bodyText = await readResponseBody(response);
+          canvasDebug('GET error', {
+            workspaceId,
+            status: response.status,
+            body: bodyText,
+          });
+          console.error(
+            `[useCanvasSync] GET falhou: ${response.status}`,
+            bodyText
+          );
+          let detail = response.statusText;
+          try {
+            const parsed = JSON.parse(bodyText) as { error?: string };
+            if (parsed.error) detail = parsed.error;
+          } catch {
+            /* ignore */
+          }
           throw new Error(`Falha ao buscar canvas: ${detail}`);
         }
 
         const arrayBuffer = await response.arrayBuffer();
+
+        canvasDebug('GET ok', {
+          workspaceId,
+          status: response.status,
+          bytes: arrayBuffer.byteLength,
+        });
 
         if (arrayBuffer.byteLength > 0 && active) {
           Y.applyUpdate(ydoc, new Uint8Array(arrayBuffer), 'initial-load');
@@ -139,7 +183,10 @@ export function useCanvasSync({
         console.error(`[useCanvasSync] Erro ao carregar '${workspaceId}':`, err);
         if (active) setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
-        if (active) setIsDocLoaded(true);
+        if (active) {
+          setIsDocLoaded(true);
+          isDocLoadedRef.current = true;
+        }
       }
     }
 
@@ -151,7 +198,23 @@ export function useCanvasSync({
   }, [ydoc, workspaceId]);
 
   useEffect(() => {
-    if (!isDocLoaded || !isSyncReady) return;
+    if (!isDocLoaded) {
+      canvasDebug('sync gate skip', {
+        reason: '!isDocLoaded',
+        workspaceId,
+        isSyncReady,
+      });
+      return;
+    }
+
+    if (!isSyncReady) {
+      canvasDebug('sync gate skip', {
+        reason: '!isSyncReady (aguardando tldraw)',
+        workspaceId,
+        isDocLoaded,
+      });
+      return;
+    }
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -162,6 +225,7 @@ export function useCanvasSync({
 
     const persistDiff = async (): Promise<ManualSaveResult> => {
       if (sessionExpiredRef.current) {
+        canvasDebug('flush skip', { reason: 'session_expired', workspaceId });
         return {
           ok: false,
           status: 'session_expired',
@@ -172,6 +236,7 @@ export function useCanvasSync({
       const diffUpdate = computeDiff();
 
       if (diffUpdate.byteLength === 0) {
+        canvasDebug('flush skip', { reason: 'no_changes', workspaceId });
         return {
           ok: true,
           status: 'already_synced',
@@ -180,6 +245,11 @@ export function useCanvasSync({
       }
 
       if (diffUpdate.byteLength > MAX_POST_BYTES) {
+        canvasDebug('flush skip', {
+          reason: 'payload_too_large',
+          workspaceId,
+          diffBytes: diffUpdate.byteLength,
+        });
         return {
           ok: false,
           status: 'error',
@@ -189,6 +259,10 @@ export function useCanvasSync({
 
       try {
         setIsSaving(true);
+        canvasDebug('POST start', {
+          workspaceId,
+          diffBytes: diffUpdate.byteLength,
+        });
 
         const response = await canvasFetch(workspaceId, {
           method: 'POST',
@@ -200,6 +274,11 @@ export function useCanvasSync({
         });
 
         if (isAuthFailure(response)) {
+          const bodyText = await readResponseBody(response);
+          console.error('[useCanvasSync] POST auth failure', {
+            status: response.status,
+            body: bodyText,
+          });
           sessionExpiredRef.current = true;
           setSessionExpired(true);
           return {
@@ -210,6 +289,8 @@ export function useCanvasSync({
         }
 
         if (response.status === 413) {
+          const bodyText = await readResponseBody(response);
+          console.error('[useCanvasSync] POST 413', bodyText);
           return {
             ok: false,
             status: 'error',
@@ -219,21 +300,31 @@ export function useCanvasSync({
         }
 
         if (response.status === 503) {
-          const body = await response.json().catch(() => ({}));
-          return {
-            ok: false,
-            status: 'error',
-            message:
-              typeof body.error === 'string'
-                ? body.error
-                : 'Armazenamento indisponível (configure Vercel Blob).',
-          };
+          const bodyText = await readResponseBody(response);
+          console.error('[useCanvasSync] POST 503', bodyText);
+          let message = 'Armazenamento indisponível (configure Vercel Blob).';
+          try {
+            const parsed = JSON.parse(bodyText) as { error?: string };
+            if (parsed.error) message = parsed.error;
+          } catch {
+            /* ignore */
+          }
+          return { ok: false, status: 'error', message };
         }
 
         if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          const detail =
-            typeof body.error === 'string' ? body.error : response.statusText;
+          const bodyText = await readResponseBody(response);
+          console.error('[useCanvasSync] POST failed', {
+            status: response.status,
+            body: bodyText,
+          });
+          let detail = response.statusText;
+          try {
+            const parsed = JSON.parse(bodyText) as { error?: string };
+            if (parsed.error) detail = parsed.error;
+          } catch {
+            if (bodyText) detail = bodyText;
+          }
           return {
             ok: false,
             status: 'error',
@@ -241,9 +332,14 @@ export function useCanvasSync({
           };
         }
 
-        const result = await response.json();
+        const result = (await response.json()) as {
+          persisted?: boolean;
+          mergedBytes?: number;
+          blobUrl?: string;
+        };
 
         if (result.persisted === false) {
+          console.error('[useCanvasSync] POST persisted=false', result);
           return {
             ok: false,
             status: 'error',
@@ -253,6 +349,15 @@ export function useCanvasSync({
 
         lastSyncedVectorRef.current = Y.encodeStateVector(ydoc);
         setError(null);
+
+        canvasDebug('POST ok', {
+          workspaceId,
+          status: response.status,
+          diffBytes: diffUpdate.byteLength,
+          mergedBytes: result.mergedBytes,
+          blobUrl: result.blobUrl,
+        });
+
         console.log(
           `[useCanvasSync] '${workspaceId}' salvo (+${diffUpdate.byteLength}B → ${result.mergedBytes ?? '?'}B no Blob).`
         );
@@ -276,9 +381,11 @@ export function useCanvasSync({
     const runFlush = async () => {
       if (flushInFlightRef.current) {
         pendingFlushRef.current = true;
+        canvasDebug('flush queued', { workspaceId });
         return;
       }
 
+      canvasDebug('flush executing', { workspaceId });
       flushInFlightRef.current = true;
       try {
         do {
@@ -294,6 +401,12 @@ export function useCanvasSync({
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      const diffBytes = computeDiff().byteLength;
+      canvasDebug('flush scheduled', {
+        workspaceId,
+        debounceMs,
+        diffBytes,
+      });
       timeoutId = setTimeout(() => {
         timeoutId = undefined;
         void runFlush();
@@ -305,19 +418,43 @@ export function useCanvasSync({
         clearTimeout(timeoutId);
         timeoutId = undefined;
       }
+      canvasDebug('flush manual (saveNow)', { workspaceId });
       return persistDiff();
     };
 
-    const handleUpdate = (_update: Uint8Array, origin: unknown) => {
+    const handleUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === 'initial-load') return;
 
-      const diffUpdate = computeDiff();
-      if (diffUpdate.byteLength === 0) return;
+      const diffBytes = computeDiff().byteLength;
+
+      canvasDebug('doc update', {
+        workspaceId,
+        origin: String(origin ?? 'unknown'),
+        updateBytes: update.byteLength,
+        diffBytes,
+        isSyncReady: isSyncReadyRef.current,
+        isDocLoaded: isDocLoadedRef.current,
+      });
+
+      if (diffBytes === 0) {
+        canvasDebug('flush skip', { reason: 'diff_zero_after_update', workspaceId });
+        return;
+      }
 
       scheduleFlush();
     };
 
     ydoc.on('update', handleUpdate);
+
+    // Mudanças no Y.Doc antes do gate (ex.: useYjsStore seed) → flush ao abrir sync
+    const pendingAfterGate = computeDiff().byteLength;
+    if (pendingAfterGate > 0) {
+      canvasDebug('flush pending on gate open', {
+        workspaceId,
+        diffBytes: pendingAfterGate,
+      });
+      scheduleFlush();
+    }
 
     return () => {
       ydoc.off('update', handleUpdate);

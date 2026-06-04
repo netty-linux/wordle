@@ -4,9 +4,11 @@ import { ensureCanvasDocumentsSchema } from '../db/ensure-schema';
 import {
   CanvasBlobError,
   assertBlobStorageConfigured,
+  canvasBlobPath,
   getCanvasBlob,
   putCanvasBlob,
 } from './blob';
+import { canvasDebug } from './debug';
 
 export type CanvasStorageBackend = 'blob';
 
@@ -14,6 +16,7 @@ export interface CanvasPersistResult {
   persisted: boolean;
   storage: CanvasStorageBackend;
   blobUrl: string;
+  blobPath: string;
   incomingBytes: number;
   mergedBytes: number;
 }
@@ -82,7 +85,17 @@ export async function applyCanvasUpdate(
   canvasId: string,
   incoming: Buffer
 ): Promise<CanvasPersistResult> {
+  const startedAt = Date.now();
   assertBlobStorageConfigured();
+
+  const blobPath = canvasBlobPath(userId, canvasId);
+
+  canvasDebug('applyCanvasUpdate start', {
+    userId,
+    canvasId,
+    blobPath,
+    incomingBytes: incoming.length,
+  });
 
   const doc = await loadDocFromBlob(userId, canvasId);
   Y.applyUpdate(doc, new Uint8Array(incoming));
@@ -92,10 +105,20 @@ export async function applyCanvasUpdate(
 
   await upsertCanvasMetadata(userId, canvasId, blob.url, blob.sizeBytes);
 
+  canvasDebug('applyCanvasUpdate done', {
+    userId,
+    canvasId,
+    blobPath,
+    mergedBytes: merged.length,
+    blobUrl: blob.url,
+    durationMs: Date.now() - startedAt,
+  });
+
   return {
     persisted: true,
     storage: 'blob',
     blobUrl: blob.url,
+    blobPath,
     incomingBytes: incoming.length,
     mergedBytes: merged.length,
   };

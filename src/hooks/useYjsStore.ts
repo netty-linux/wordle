@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createTLStore, defaultShapeUtils, TLStoreWithStatus, TLRecord } from 'tldraw';
 import * as Y from 'yjs';
 import { TaskCardShapeUtil } from '../canvas/shapes/TaskCardShape';
+import { canvasDebug } from '@/lib/canvas/debug';
 
 interface UseYjsStoreProps {
   ydoc: Y.Doc;
@@ -37,6 +38,7 @@ export function useYjsStore({ ydoc, isDocLoaded }: UseYjsStoreProps) {
     // === 1. Sincronização Inicial ===
     if (ymap.size > 0) {
       // Se já existem registros salvos no Yjs, substitui a store local
+      canvasDebug('hydrate from Y.Doc', { recordCount: ymap.size });
       console.log(`[useYjsStore] Carregando ${ymap.size} registros existentes do Y.Doc para a store do tldraw.`);
       store.mergeRemoteChanges(() => {
         store.clear();
@@ -44,6 +46,9 @@ export function useYjsStore({ ydoc, isDocLoaded }: UseYjsStoreProps) {
       });
     } else {
       // Se o Yjs está vazio (canvas novo), popula o Yjs com os registros padrão da store
+      canvasDebug('seed empty Y.Doc', {
+        defaultRecordCount: store.allRecords().length,
+      });
       console.log(`[useYjsStore] Novo Canvas detectado. Populando Y.Doc com os ${store.allRecords().length} registros default.`);
       ydoc.transact(() => {
         store.allRecords().forEach((record) => {
