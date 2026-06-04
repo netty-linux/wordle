@@ -1,4 +1,5 @@
 import React from 'react';
+import { Providers } from '../components/Providers';
 import './globals.css';
 
 export const metadata = {
@@ -15,7 +16,7 @@ export default function RootLayout({
     // suppressHydrationWarning impede que extensões de navegador quebrem o app no modo dev
     <html lang="pt-BR" suppressHydrationWarning>
       <body className="bg-zinc-950 text-white antialiased" suppressHydrationWarning>
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

@@ -12,6 +12,7 @@ module.exports = {
       fontFamily: {
         sans: ['Geist', 'sans-serif'],
         mono: ['Departure Mono', 'monospace'],
+        'departure-mono': ['Departure Mono', 'monospace'],
       },
     },
   },

@@ -1,25 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCanvasStorage } from '../../../../lib/canvas-storage';
+import { auth } from '@/auth';
+import { getCanvasState, saveCanvasState } from '@/lib/canvas/repository';
 
 export const runtime = 'nodejs';
 
 /**
  * GET /api/canvas/[id]
- * Recupera o estado binário do Yjs para o canvas especificado.
+ * Recupera o estado binário do Yjs (Vercel Blob) se pertencer ao usuário autenticado.
  */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const session = await auth();
+    if (!session?.user?.id) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
 
+    const { id } = await params;
     if (!id) {
       return new NextResponse('ID do canvas não informado', { status: 400 });
     }
 
-    const state = await getCanvasStorage().get(id);
-
+    const state = await getCanvasState(session.user.id, id);
     if (!state) {
       return new NextResponse('Canvas não encontrado', { status: 404 });
     }
@@ -38,15 +42,19 @@ export async function GET(
 
 /**
  * POST /api/canvas/[id]
- * Salva ou atualiza o estado binário do Yjs para o canvas especificado.
+ * Salva o estado binário no Blob e registra ownership no Turso.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const session = await auth();
+    if (!session?.user?.id) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
 
+    const { id } = await params;
     if (!id) {
       return new NextResponse('ID do canvas não informado', { status: 400 });
     }
@@ -58,13 +66,9 @@ export async function POST(
       return new NextResponse('Buffer vazio enviado', { status: 400 });
     }
 
-    const storage = getCanvasStorage();
-    await storage.set(id, buffer);
+    const { persisted } = await saveCanvasState(session.user.id, id, buffer);
 
-    return NextResponse.json({
-      success: true,
-      persisted: storage.mode !== 'memory',
-    });
+    return NextResponse.json({ success: true, persisted });
   } catch (error) {
     console.error('Erro ao salvar o canvas:', error);
     return new NextResponse('Erro interno do servidor', { status: 500 });

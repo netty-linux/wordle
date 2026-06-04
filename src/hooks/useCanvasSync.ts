@@ -31,13 +31,19 @@ export function useCanvasSync({ id, debounceMs = 2000 }: UseCanvasSyncProps) {
         setIsDocLoaded(false);
         setError(null);
 
-        const response = await fetch(`/api/canvas/${id}`);
+        const response = await fetch(`/api/canvas/${id}`, {
+          credentials: 'include',
+        });
 
         if (response.status === 404) {
           // Documento novo (ainda não salvo no banco)
           console.log(`[useCanvasSync] Canvas '${id}' não encontrado no banco. Iniciando canvas vazio.`);
           if (active) setIsDocLoaded(true);
           return;
+        }
+
+        if (response.status === 401) {
+          throw new Error('Sessão expirada. Faça login novamente em /login');
         }
 
         if (!response.ok) {
@@ -88,6 +94,7 @@ export function useCanvasSync({ id, debounceMs = 2000 }: UseCanvasSyncProps) {
 
           const response = await fetch(`/api/canvas/${id}`, {
             method: 'POST',
+            credentials: 'include',
             headers: {
               'Content-Type': 'application/octet-stream',
             },
