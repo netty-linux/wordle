@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { getCanvasState, saveCanvasState } from '@/lib/canvas/repository';
+import { applyCanvasUpdate, getCanvasState } from '@/lib/canvas/repository';
 
 export const runtime = 'nodejs';
 
-/**
- * GET /api/canvas/[id]
- * Recupera o estado binário do Yjs (Vercel Blob) se pertencer ao usuário autenticado.
- */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,10 +36,6 @@ export async function GET(
   }
 }
 
-/**
- * POST /api/canvas/[id]
- * Salva o estado binário no Blob e registra ownership no Turso.
- */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,9 +58,29 @@ export async function POST(
       return new NextResponse('Buffer vazio enviado', { status: 400 });
     }
 
-    const result = await saveCanvasState(session.user.id, id, buffer);
+    const mode = request.headers.get('x-canvas-update') ?? 'incremental';
 
-    return NextResponse.json({ success: true, ...result });
+    // #region agent log
+    fetch('http://127.0.0.1:7401/ingest/bc08e07d-0b22-492d-a8b7-6f08426e0ffc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Debug-Session-Id': 'd65edf',
+      },
+      body: JSON.stringify({
+        sessionId: 'd65edf',
+        hypothesisId: 'A',
+        location: 'route.ts:POST',
+        message: 'canvas POST received',
+        data: { canvasId: id, incomingBytes: buffer.length, mode },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+
+    const result = await applyCanvasUpdate(session.user.id, id, buffer);
+
+    return NextResponse.json({ success: true, ...result, mode });
   } catch (error) {
     console.error('Erro ao salvar o canvas:', error);
     return new NextResponse('Erro interno do servidor', { status: 500 });
