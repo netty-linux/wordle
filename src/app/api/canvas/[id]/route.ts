@@ -134,7 +134,8 @@ export async function POST(
       mergedBytes: result.mergedBytes,
     });
   } catch (error) {
-    console.error('[canvas POST]', error);
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error('[canvas POST]', detail, error);
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }

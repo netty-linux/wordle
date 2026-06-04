@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { db, canvasDocuments } from '../db';
+import { ensureCanvasDocumentsSchema } from '../db/ensure-schema';
 import {
   CanvasBlobError,
   assertBlobStorageConfigured,
@@ -23,6 +24,8 @@ async function upsertCanvasMetadata(
   blobUrl: string,
   sizeBytes: number
 ) {
+  await ensureCanvasDocumentsSchema();
+
   const now = new Date();
 
   await db
