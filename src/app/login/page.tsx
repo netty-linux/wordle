@@ -1,6 +1,7 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 
@@ -57,13 +58,25 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#f4f1ea] text-black font-sans flex items-center justify-center p-6">
       <div className="w-full max-w-md border-4 border-black bg-white p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-zinc-600 mb-2">
-          Wired Wordle
-        </p>
-        <h1 className="text-3xl font-extrabold tracking-tight mb-1">
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-32 h-32 p-2 bg-zinc-100 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center">
+            <Image
+              src="/Logo-Mascote.png"
+              alt="Mascote Wired Wordle — engrenagens e circuitos"
+              width={112}
+              height={112}
+              priority
+              className="w-full h-full object-contain"
+            />
+          </div>
+          <p className="mt-4 text-[10px] font-mono uppercase tracking-[0.2em] text-zinc-600">
+            Wired Wordle
+          </p>
+        </div>
+        <h1 className="text-3xl font-extrabold tracking-tight mb-1 text-center">
           {registerMode ? 'Criar conta' : 'Entrar'}
         </h1>
-        <p className="text-sm text-zinc-600 mb-8">
+        <p className="text-sm text-zinc-600 mb-8 text-center">
           Canvas isolado por usuário · Turso + Vercel
         </p>
 
