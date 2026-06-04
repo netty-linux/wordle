@@ -58,6 +58,22 @@ export async function POST(
       return new NextResponse('Buffer vazio enviado', { status: 400 });
     }
 
+    const VERCEL_BODY_LIMIT = 4_500_000;
+    if (buffer.length > VERCEL_BODY_LIMIT) {
+      console.error('[canvas] POST rejeitado: payload grande demais', {
+        canvasId: id,
+        incomingBytes: buffer.length,
+      });
+      return NextResponse.json(
+        {
+          error: 'Payload Too Large',
+          incomingBytes: buffer.length,
+          limit: VERCEL_BODY_LIMIT,
+        },
+        { status: 413 }
+      );
+    }
+
     const mode = request.headers.get('x-canvas-update') ?? 'incremental';
 
     // #region agent log

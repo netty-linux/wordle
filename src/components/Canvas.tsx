@@ -112,11 +112,20 @@ function TldrawLicenseSetup() {
 }
 
 function CanvasEditor({ id }: CanvasProps) {
-  // 1. Inicializa o controle do Yjs e a sincronização com a API Next.js (GET/POST)
-  const { ydoc, isDocLoaded, isSaving, error } = useCanvasSync({ id });
+  const [isTldrawHydrated, setIsTldrawHydrated] = useState(false);
 
-  // 2. Cria e sincroniza a store em memória do Tldraw com o Y.Doc
+  // 1. Yjs + API sync (POST pauses until tldraw finishes hydrating from Y.Doc)
+  const { ydoc, isDocLoaded, isSaving, error } = useCanvasSync({
+    id,
+    isSyncReady: isTldrawHydrated,
+  });
+
+  // 2. Tldraw store ↔ Y.Doc
   const storeWithStatus = useYjsStore({ ydoc, isDocLoaded });
+
+  useEffect(() => {
+    setIsTldrawHydrated(storeWithStatus.status === 'synced-remote');
+  }, [storeWithStatus.status]);
 
   // Tela de Erro com painel técnico formatado em 'Departure Mono'
   if (error) {
